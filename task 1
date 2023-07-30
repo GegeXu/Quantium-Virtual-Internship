@@ -1,0 +1,228 @@
+# Quantium Virtual Internship - Retail Strategy and Analytics - Task 1
+library(data.table)
+library(ggplot2)
+library(ggmosaic)
+
+setDT(QVI_transaction_data)
+setDT(QVI_purchase_behaviour)
+td = copy(QVI_transaction_data)
+pb = copy(QVI_purchase_behaviour)
+
+# Exploratory data analysis
+str(td)
+str(pb)
+head(td)
+
+# Convert DATE column to a date format
+td$DATE = as.Date(td$DATE, origin = "1899-12-30")
+###td[,DATE:=as.Date(DATE, origin = "1899‐12‐30")] 
+###td[, date := as.Date(date)]
+
+
+# Examine PROD_NAME
+td[, .N, PROD_NAME]
+td[,head(PROD_NAME)]
+td[,summary(PROD_NAME)]
+
+# Examine the words in PROD_NAME to see if there are any incorrect entries
+productWords = data.table(unlist(strsplit(unique(td[, PROD_NAME]), " ")))
+setnames(productWords,'words')
+
+###grepl('[0-9]',productWords) #True
+###grepl('[&]',productWords) #True
+###grepl('[/]',productWords) #True
+
+###productWords[,gsub('[0-9]')]
+
+# Removing digits
+productWords = productWords[grepl("\\d", words) == FALSE, ] ##remove all the columns with digits
+###productWords[,words:=gsub('[0-9]+g','',words)]
+###productWords[,words:=gsub('[0-9]','',words)]
+###grepl('[0-9]',productWords) #False
+
+# Removing special characters
+productWords = productWords[grepl("[:alpha:]", words), ]
+###productWords[,words:=gsub('[&]','',words)]
+###grepl('[&]',productWords) #False
+
+###productWords[,words:=gsub('[/]','',words)]
+###grepl('[/]',productWords) #False
+
+# Let's look at the most common words by counting the number of times a word appears and
+# sorting them by this frequency in order of highest to lowest frequency
+productWords[, .N, words][order(N, decreasing = TRUE)]
+###po = productWords[,count(productWords,words)]
+###po[order(-n)] #chips 21 times
+
+# Remove salsa products
+td[, SALSA := grepl("salsa", tolower(PROD_NAME))] #add a column to tell if the product is salad
+td = td[SALSA == FALSE, ][, SALSA := NULL] #remove salad and remove column salsa
+
+# Summarise the data to check for nulls and possible outliers
+summary(td)
+
+# Filter the dataset to find the outlier
+td[PROD_QTY == 200]
+
+# Let's see if the customer has had other transactions
+td[LYLTY_CARD_NBR==226000]
+
+# Filter out the customer based on the loyalty card number
+td = td[LYLTY_CARD_NBR!=226000,]
+
+# Re-examine transaction data
+summary(td)
+
+# Count the number of transactions by date
+td[, .N, by = DATE]
+###tdc[,DATE := as.Date(DATE)]
+
+# Fill missing transaction counts with 0
+###start_date = as.Date("2018-07-01")
+###end_date = as.Date("2019-06-30")
+###date_sequence = data.table(DATE = seq(start_date, end_date, by = "days"))
+allDates = data.table(seq(as.Date("2018/07/01"), as.Date("2019/06/30"), by = "day"))
+setnames(allDates, "DATE")
+tbd = merge(allDates, td[, .N, by = DATE], all.x = TRUE)
+
+###tdall = date_sequence[tdc,N1:=N, on = .(DATE = DATE)]
+###tdall[is.na(N1), N1 := 0]
+###tdall[N1==0]
+
+theme_set(theme_bw())
+theme_update(plot.title = element_text(hjust = 0.5))
+
+ggplot(tbd, aes(x = DATE, y = N)) +
+  geom_line() +
+  labs(x = "Day", y = "Number of transactions", title = "Transactions over time") +
+  scale_x_date(breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+
+## Filter to December and look at individual days
+dec_data  = tdall[format(DATE, "%Y-%m") == "2018-12"]
+ggplot(dec_data, aes(x = DATE, y = N1)) +
+  geom_line() +
+  labs(title = "Number of Transactions in December",
+       x = "Date",
+       y = "Number of Transactions")
+
+ggplot(tbd[month(DATE) == 12, ], aes(x = DATE, y = N)) + geom_line() +
+  labs(x = "Day", y = "Number of transactions", title = "Transactions over time") +
+  scale_x_date(breaks = "1 day") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+# Pack size
+td[, PACK_SIZE := parse_number(PROD_NAME)]
+summary(td$PACK_SIZE)
+
+# Let's check if the pack sizes look sensible
+ps = td[, .N, PACK_SIZE][order(PACK_SIZE)]
+
+# Let's plot a histogram of PACK_SIZE
+ggplot(ps,aes(x=PACK_SIZE)) + geom_histogram(binwidth = 20,color='white')
+hist(td[, PACK_SIZE])
+
+# Checking brands
+###td[,BRAND := sub("^([^ ]+).*", "\\1", PROD_NAME)]
+td[, BRAND := toupper(substr(PROD_NAME, 1, regexpr(pattern = ' ', PROD_NAME) - 1))]
+td[, .N, BRAND][order(-N)]
+
+# Clean brand names
+###td[BRAND == "Red", BRAND := "RRD"]
+###td[BRAND == "Dorito", BRAND := "Doritos"]
+###td[BRAND == "Infzns", BRAND := "Infuzions"]
+###td[BRAND == "Smith", BRAND := "Smiths"]
+###td[BRAND == "Snbts", BRAND := "Sunbites"]
+###td[BRAND == "WW", BRAND := "Woolworths"]
+
+td[BRAND == "RED", BRAND := "RRD"] 
+td[BRAND == "SNBTS", BRAND := "SUNBITES"] 
+td[BRAND == "INFZNS", BRAND := "INFUZIONS"] 
+td[BRAND == "WW", BRAND := "WOOLWORTHS"] 
+td[BRAND == "SMITH", BRAND := "SMITHS"] 
+td[BRAND == "NCC", BRAND := "NATURAL"] 
+td[BRAND == "DORITO", BRAND := "DORITOS"] 
+td[BRAND == "GRAIN", BRAND := "GRNWVES"]
+
+## Examining customer data
+pb[, .N, by = LIFESTAGE][order(-N)]
+###summary(pb)
+###ggplot(pb,aes(x=LIFESTAGE)) + geom_bar()
+###ggplot(pb,aes(x=PREMIUM_CUSTOMER)) + geom_bar()
+
+# Merge transaction data to customer data
+data = merge(td, pb, all.x = TRUE)
+data[is.null(LIFESTAGE), .N]
+data[is.null(PREMIUM_CUSTOMER), .N]
+###grepl('[NA]',data)
+###str(data)
+
+# Total sales by LIFESTAGE and PREMIUM_CUSTOMER ##new to me
+tot_s = data[, .(SALES = sum(TOT_SALES)),by=.(LIFESTAGE,PREMIUM_CUSTOMER)][order(-SALES)]
+tot_s
+p = ggplot(tot_s) +
+  geom_mosaic(aes(weight = SALES, x = product(PREMIUM_CUSTOMER, LIFESTAGE), 
+                  fill = PREMIUM_CUSTOMER)) +
+  labs(x = "Lifestage", y = "Premium customer flag", title = "Proportion of sales") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+p + geom_text(data = ggplot_build(p)$data[[1]], aes(x = (xmin + xmax)/2 , 
+                                                    y = (ymin + ymax)/2, 
+                                                    label = as.character(paste(round(.wt/sum(.wt),3)*100, '%'))))
+
+#see if the higher sales are due to there being more customers who buy chips.
+#Number of customers by LIFESTAGE and PREMIUM_CUSTOMER
+#Calculate the summary of number of customers by those dimensions and create a plot.
+
+cus = data[, .(CUSTOMERS = uniqueN(LYLTY_CARD_NBR)), .(LIFESTAGE,PREMIUM_CUSTOMER)][order(-CUSTOMERS)]
+####data[grep('[chip]',PROD_NAME), .N,by=.(LIFESTAGE,PREMIUM_CUSTOMER)][order(-N)]
+
+p = ggplot(cus) +
+  geom_mosaic(aes(weight = CUSTOMERS, x = product(PREMIUM_CUSTOMER, LIFESTAGE), 
+                  fill = PREMIUM_CUSTOMER)) +
+  labs(x = "Lifestage", y = "Premium customer flag", title = "Proportion of customers") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+p + geom_text(data = ggplot_build(p)$data[[1]], aes(x = (xmin + xmax)/2 , 
+                                                    y = (ymin + ymax)/2, 
+                                                    label = as.character(paste(round(.wt/sum(.wt),3)*100, '%'))))
+
+# Average number of units per customer by LIFESTAGE and PREMIUM_CUSTOMER
+avg_units = data[, .(avg_num = sum(PROD_QTY)/uniqueN(LYLTY_CARD_NBR)), .(LIFESTAGE,PREMIUM_CUSTOMER)][order(-avg_num)]
+
+ggplot(data = avg_units, aes(weight = avg_num, x = LIFESTAGE, fill = PREMIUM_CUSTOMER)) +
+  geom_bar(position = position_dodge()) +
+  labs(x = "Lifestage", y = "Avg units per transaction", title = "Units per customer") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+# Average price per unit by LIFESTAGE and PREMIUM_CUSTOMER
+avg_price = data[, .(avg = sum(TOT_SALES)/sum(PROD_QTY)), .(LIFESTAGE,PREMIUM_CUSTOMER)][order(-avg)]
+
+ggplot(data = avg_price, aes(weight = avg, x = LIFESTAGE, fill = PREMIUM_CUSTOMER)) +
+  geom_bar(position = position_dodge()) +
+  labs(x = "Lifestage", y = "Avg units per transaction", title = "Units per customer") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+# Deep dive into Mainstream, young singles/couples
+target_cus = data[LIFESTAGE == 'YOUNG SINGLES/COUPLES' & PREMIUM_CUSTOMER == 'Mainstream']
+other = data[!(LIFESTAGE == 'YOUNG SINGLES/COUPLES' & PREMIUM_CUSTOMER == 'Mainstream')]
+
+
+# Brand affinity compared to the rest of the population
+#brand percentage brand qty/total qty for 2 segments
+target_cus_qty = target_cus[,sum(total_sales)]
+other_qty = other[,sum(total_sales)]
+
+a = target_cus[,.(targetSegment = sum(PROD_QTY)/target_cus_qty),by=BRAND]
+b = other[,.(Other = sum(PROD_QTY)/other_qty),by=BRAND]
+
+brand_pro = merge(a, b,by='BRAND')[, affinityToBrand := targetSegment/Other]
+brand_pro[order(-affinityToBrand)]
+
+# Preferred pack size compared to the rest of the population
+c = target_cus[,.(targetSegment = sum(PROD_QTY)/target_cus_qty),by=PACK_SIZE]
+d = other[,.(Other = sum(PROD_QTY)/other_qty),by=BRAND]
+
+pack_proportions  = merge(c, d)[, affinityToPack := targetSegment/other]
+pack_proportions[order(-affinityToPack)]
+
+data[PACK_SIZE == 270, unique(PROD_NAME)]
